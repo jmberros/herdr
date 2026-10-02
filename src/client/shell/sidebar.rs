@@ -251,6 +251,7 @@ pub(crate) fn render_sidebar(
                     )
                     .len()
                     .max(1)
+                    .saturating_add(sidebar_tabs(snapshot, workspace, &config.spaces).count())
                     .min(u16::MAX as usize) as u16
                 })
                 .unwrap_or(1)
@@ -305,7 +306,10 @@ pub(crate) fn render_sidebar(
         };
         let status = displayed_workspace_status(snapshot, workspace, state.collapsed_groups);
         let rows = workspace_rows(workspace, status, entry.indented, &config.spaces);
-        let row_height = (rows.len().max(1).min(u16::MAX as usize) as u16).min(body.height);
+        let name_rows = rows.len().max(1);
+        let tab_rows = sidebar_tabs(snapshot, workspace, &config.spaces).count();
+        let row_height =
+            (name_rows.saturating_add(tab_rows).min(u16::MAX as usize) as u16).min(body.height);
         if y.saturating_add(row_height) > body.bottom() {
             break;
         }
@@ -342,8 +346,37 @@ pub(crate) fn render_sidebar(
             state.collapsed_groups,
             palette,
         );
+        // Name rows only: tab rows below are hit-tested as tabs, not the workspace.
+        let name_rect = Rect::new(rect.x, rect.y, rect.width, (name_rows as u16).min(rect.height));
+        for (offset, tab) in sidebar_tabs(snapshot, workspace, &config.spaces).enumerate() {
+            let ty = rect.y.saturating_add((name_rows + offset) as u16);
+            if ty >= rect.bottom() {
+                break;
+            }
+            let active = tab.tab_id == workspace.active_tab_id;
+            let style = if active && workspace.focused {
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else if active {
+                Style::default().fg(palette.overlay1)
+            } else {
+                Style::default().fg(palette.overlay0)
+            };
+            let prefix = if entry.indented { "      " } else { "  " };
+            put_text(
+                buffer,
+                rect.x,
+                ty,
+                rect.width,
+                &format!("{prefix}{}", tab.label),
+                style,
+            );
+            hits.tabs
+                .push((Rect::new(rect.x, ty, rect.width, 1), tab.tab_id.clone()));
+        }
         hits.workspaces.push(WorkspaceHit {
-            rect,
+            rect: name_rect,
             endpoint_id: ClientEndpointId::Local,
             workspace_id: workspace.workspace_id.clone(),
             indented: entry.indented,
@@ -453,6 +486,18 @@ pub(crate) fn render_sidebar(
         "«",
         Style::default().fg(palette.overlay0),
     );
+}
+
+fn sidebar_tabs<'a>(
+    snapshot: &'a ClientShellSnapshot,
+    workspace: &'a crate::protocol::ClientShellWorkspace,
+    config: &SpacesSidebarConfig,
+) -> impl Iterator<Item = &'a crate::protocol::ClientShellTab> {
+    let enabled = config.show_tabs;
+    snapshot
+        .tabs
+        .iter()
+        .filter(move |tab| enabled && tab.workspace_id == workspace.workspace_id)
 }
 
 pub(crate) fn workspace_entries(
