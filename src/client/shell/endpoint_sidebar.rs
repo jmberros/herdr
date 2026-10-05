@@ -250,9 +250,17 @@ pub(super) fn render_expanded(
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
     let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
+        crate::ui::expanded_sidebar_sections(
+            area,
+            state.sidebar_section_split,
+            config.agents.hidden,
+        );
     hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+        crate::ui::sidebar_section_divider_rect(
+            area,
+            state.sidebar_section_split,
+            config.agents.hidden,
+        );
     put_text(
         buffer,
         workspace_area.x,
@@ -526,9 +534,9 @@ pub(super) fn render_expanded(
                             .fg(palette.accent)
                             .add_modifier(Modifier::BOLD)
                     } else if active {
-                        Style::default().fg(palette.overlay1)
+                        Style::default().fg(palette.text)
                     } else {
-                        Style::default().fg(palette.overlay0)
+                        Style::default().fg(palette.text)
                     };
                     let prefix = if entry.indented { "        " } else { "    " };
                     super::sidebar::render_tab_row(
@@ -536,6 +544,7 @@ pub(super) fn render_expanded(
                         Rect::new(rect.x, ty, rect.width, 1),
                         prefix,
                         tab,
+                        snapshot,
                         style,
                         config.status_indicators,
                         palette,

@@ -212,9 +212,17 @@ pub(crate) fn render_sidebar(
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
     let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
+        crate::ui::expanded_sidebar_sections(
+            area,
+            state.sidebar_section_split,
+            config.agents.hidden,
+        );
     hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+        crate::ui::sidebar_section_divider_rect(
+            area,
+            state.sidebar_section_split,
+            config.agents.hidden,
+        );
     put_text(
         buffer,
         workspace_area.x,
@@ -359,9 +367,9 @@ pub(crate) fn render_sidebar(
                     .fg(palette.accent)
                     .add_modifier(Modifier::BOLD)
             } else if active {
-                Style::default().fg(palette.overlay1)
+                Style::default().fg(palette.text)
             } else {
-                Style::default().fg(palette.overlay0)
+                Style::default().fg(palette.text)
             };
             let prefix = if entry.indented { "      " } else { "  " };
             render_tab_row(
@@ -369,6 +377,7 @@ pub(crate) fn render_sidebar(
                 Rect::new(rect.x, ty, rect.width, 1),
                 prefix,
                 tab,
+                snapshot,
                 style,
                 config.status_indicators,
                 palette,
@@ -495,6 +504,7 @@ pub(in crate::client::shell) fn render_tab_row(
     area: Rect,
     prefix: &str,
     tab: &crate::protocol::ClientShellTab,
+    snapshot: &ClientShellSnapshot,
     label_style: Style,
     indicators: crate::config::StatusIndicatorStyle,
     palette: &Palette,
@@ -508,7 +518,7 @@ pub(in crate::client::shell) fn render_tab_row(
         status_icon(tab.agent_status, indicators),
         Style::default().fg(status_color(tab.agent_status, palette)),
     );
-    put_segment(
+    x = put_segment(
         buffer,
         x,
         area.y,
@@ -516,6 +526,50 @@ pub(in crate::client::shell) fn render_tab_row(
         &format!(" {}", tab.label),
         label_style,
     );
+    if let Some(agent) = tab_agent_text(snapshot, tab) {
+        x = put_segment(
+            buffer,
+            x,
+            area.y,
+            area.right(),
+            " · ",
+            Style::default().fg(palette.overlay0),
+        );
+        put_segment(
+            buffer,
+            x,
+            area.y,
+            area.right(),
+            &agent,
+            Style::default().fg(palette.blue),
+        );
+    }
+}
+
+/// "<agent> <model>" for the tab's agent (focused one first), e.g. "claude Sonnet 5.5".
+fn tab_agent_text(
+    snapshot: &ClientShellSnapshot,
+    tab: &crate::protocol::ClientShellTab,
+) -> Option<String> {
+    let agent = snapshot
+        .agents
+        .iter()
+        .filter(|agent| agent.tab_id == tab.tab_id)
+        .max_by_key(|agent| agent.focused)?;
+    let name = agent
+        .display_agent
+        .as_deref()
+        .or(agent.name.as_deref())
+        .or(agent.agent.as_deref())?;
+    let model = agent
+        .tokens
+        .iter()
+        .find(|(key, _)| key == "model")
+        .map(|(_, value)| value.as_str());
+    Some(match model {
+        Some(model) if !model.is_empty() => format!("{name} {model}"),
+        _ => name.to_string(),
+    })
 }
 
 pub(in crate::client::shell) fn sidebar_tabs<'a>(
