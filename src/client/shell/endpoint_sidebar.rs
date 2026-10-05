@@ -349,6 +349,8 @@ pub(super) fn render_expanded(
                     entry,
                 }),
             ) if endpoint == next_endpoint => u16::from(!entry.indented) * config.spaces.row_gap,
+            // Last workspace of a machine: pad before the next machine's header.
+            (Row::Workspace { .. }, Some(Row::Endpoint(_))) => config.spaces.row_gap,
             _ => 0,
         })
         .collect::<Vec<_>>();
