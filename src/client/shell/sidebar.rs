@@ -528,44 +528,58 @@ pub(in crate::client::shell) fn render_tab_row(
         &format!(" {}", tab.label),
         label_style,
     );
-    // Line 2: session title (dim italic gray).
-    if let Some(title) = tab_agent_title(snapshot, tab) {
-        if area.height > 1 {
-            put_segment(
+    // Line 2: agent + model + effort (blue).
+    if area.height > 1 {
+        if let Some(agent) = tab_agent_text(snapshot, tab) {
+            let x = put_segment(
                 buffer,
                 area.x,
                 area.y + 1,
                 area.right(),
-                &format!("{prefix}  {title}"),
-                Style::default()
-                    .fg(palette.overlay0)
-                    .add_modifier(Modifier::DIM | Modifier::ITALIC),
+                &format!("{prefix}  "),
+                label_style,
+            );
+            put_segment(
+                buffer,
+                x,
+                area.y + 1,
+                area.right(),
+                &agent,
+                Style::default().fg(palette.blue),
             );
         }
     }
 }
 
-/// The agent's terminal title (for Claude Code, its session topic), as a goal hint.
-fn tab_agent_title<'a>(
-    snapshot: &'a ClientShellSnapshot,
+/// "<agent> <model>" for the tab's agent (focused one first), e.g. "claude Sonnet 5.5".
+fn tab_agent_text(
+    snapshot: &ClientShellSnapshot,
     tab: &crate::protocol::ClientShellTab,
-) -> Option<&'a str> {
+) -> Option<String> {
     let agent = snapshot
         .agents
         .iter()
         .filter(|agent| agent.tab_id == tab.tab_id)
         .max_by_key(|agent| agent.focused)?;
-    agent
-        .terminal_title_stripped
+    let name = agent
+        .display_agent
         .as_deref()
-        .or(agent.terminal_title.as_deref())
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
+        .or(agent.name.as_deref())
+        .or(agent.agent.as_deref())?;
+    let model = agent
+        .tokens
+        .iter()
+        .find(|(key, _)| key == "model")
+        .map(|(_, value)| value.as_str());
+    Some(match model {
+        Some(model) if !model.is_empty() => format!("{name} {model}"),
+        _ => name.to_string(),
+    })
 }
 
 /// Rows one sidebar tab entry takes: its name, plus a line for its agent.
 pub(in crate::client::shell) fn tab_row_height(snapshot: &ClientShellSnapshot, tab: &crate::protocol::ClientShellTab) -> usize {
-    1 + usize::from(tab_agent_title(snapshot, tab).is_some())
+    1 + usize::from(tab_agent_text(snapshot, tab).is_some())
 }
 
 pub(in crate::client::shell) fn sidebar_tab_rows(
