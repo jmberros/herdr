@@ -528,38 +528,40 @@ pub(in crate::client::shell) fn render_tab_row(
         &format!(" {}", tab.label),
         label_style,
     );
-    if area.height > 1 {
-        if let Some(agent) = tab_agent_text(snapshot, tab) {
-            let indent = format!("{prefix}  ");
+    // Line 2: session title (dim gray). Line 3: agent + model (blue).
+    let mut line = 1;
+    if let Some(title) = tab_agent_title(snapshot, tab) {
+        if line < area.height {
+            put_segment(
+                buffer,
+                area.x,
+                area.y + line,
+                area.right(),
+                &format!("{prefix}  {title}"),
+                Style::default()
+                    .fg(palette.overlay0)
+                    .add_modifier(Modifier::DIM),
+            );
+            line += 1;
+        }
+    }
+    if let Some(agent) = tab_agent_text(snapshot, tab) {
+        if line < area.height {
             let x = put_segment(
                 buffer,
                 area.x,
-                area.y + 1,
+                area.y + line,
                 area.right(),
-                &indent,
+                &format!("{prefix}  "),
                 label_style,
             );
             put_segment(
                 buffer,
                 x,
-                area.y + 1,
+                area.y + line,
                 area.right(),
                 &agent,
                 Style::default().fg(palette.blue),
-            );
-        }
-    }
-    if area.height > 2 {
-        if let Some(title) = tab_agent_title(snapshot, tab) {
-            put_segment(
-                buffer,
-                area.x,
-                area.y + 2,
-                area.right(),
-                &format!("{prefix}  {title}"),
-                Style::default()
-                    .fg(palette.subtext0)
-                    .add_modifier(Modifier::ITALIC),
             );
         }
     }
