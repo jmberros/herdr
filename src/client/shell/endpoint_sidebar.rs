@@ -531,13 +531,14 @@ pub(super) fn render_expanded(
                         Style::default().fg(palette.overlay0)
                     };
                     let prefix = if entry.indented { "        " } else { "    " };
-                    put_text(
+                    super::sidebar::render_tab_row(
                         buffer,
-                        rect.x,
-                        ty,
-                        rect.width,
-                        &format!("{prefix}{}", tab.label),
+                        Rect::new(rect.x, ty, rect.width, 1),
+                        prefix,
+                        tab,
                         style,
+                        config.status_indicators,
+                        palette,
                     );
                     if endpoint_active {
                         hits.tabs

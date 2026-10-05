@@ -364,13 +364,14 @@ pub(crate) fn render_sidebar(
                 Style::default().fg(palette.overlay0)
             };
             let prefix = if entry.indented { "      " } else { "  " };
-            put_text(
+            render_tab_row(
                 buffer,
-                rect.x,
-                ty,
-                rect.width,
-                &format!("{prefix}{}", tab.label),
+                Rect::new(rect.x, ty, rect.width, 1),
+                prefix,
+                tab,
                 style,
+                config.status_indicators,
+                palette,
             );
             hits.tabs
                 .push((Rect::new(rect.x, ty, rect.width, 1), tab.tab_id.clone()));
@@ -485,6 +486,35 @@ pub(crate) fn render_sidebar(
         hits.sidebar_toggle.width,
         "«",
         Style::default().fg(palette.overlay0),
+    );
+}
+
+/// One sidebar tab row: indent, per-tab status dot, then the tab label.
+pub(in crate::client::shell) fn render_tab_row(
+    buffer: &mut Buffer,
+    area: Rect,
+    prefix: &str,
+    tab: &crate::protocol::ClientShellTab,
+    label_style: Style,
+    indicators: crate::config::StatusIndicatorStyle,
+    palette: &Palette,
+) {
+    let mut x = put_segment(buffer, area.x, area.y, area.right(), prefix, label_style);
+    x = put_segment(
+        buffer,
+        x,
+        area.y,
+        area.right(),
+        status_icon(tab.agent_status, indicators),
+        Style::default().fg(status_color(tab.agent_status, palette)),
+    );
+    put_segment(
+        buffer,
+        x,
+        area.y,
+        area.right(),
+        &format!(" {}", tab.label),
+        label_style,
     );
 }
 
