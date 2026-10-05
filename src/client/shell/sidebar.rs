@@ -488,7 +488,7 @@ pub(crate) fn render_sidebar(
     );
 }
 
-fn sidebar_tabs<'a>(
+pub(in crate::client::shell) fn sidebar_tabs<'a>(
     snapshot: &'a ClientShellSnapshot,
     workspace: &'a crate::protocol::ClientShellWorkspace,
     config: &SpacesSidebarConfig,

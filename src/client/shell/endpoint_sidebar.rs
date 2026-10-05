@@ -327,6 +327,10 @@ pub(super) fn render_expanded(
                             )
                             .len()
                             .max(1)
+                            .saturating_add(
+                                super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces)
+                                    .count(),
+                            )
                             .min(u16::MAX as usize) as u16,
                         )
                     })
@@ -453,7 +457,11 @@ pub(super) fn render_expanded(
                     entry.indented,
                     &config.spaces,
                 );
-                let height = (tokens.len().max(1).min(u16::MAX as usize) as u16).min(body.height);
+                let name_rows = tokens.len().max(1);
+                let tab_rows =
+                    super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces).count();
+                let height = (name_rows.saturating_add(tab_rows).min(u16::MAX as usize) as u16)
+                    .min(body.height);
                 if y.saturating_add(height) > body.bottom() {
                     break;
                 }
@@ -497,8 +505,45 @@ pub(super) fn render_expanded(
                     collapsed_groups,
                     palette,
                 );
+                // Tab rows are hit-tested as tabs, which resolve against the active
+                // endpoint only; other endpoints' tab rows activate the workspace.
+                let mut name_rect = rect;
+                if endpoint_active {
+                    name_rect.height = (name_rows as u16).min(rect.height);
+                }
+                for (offset, tab) in
+                    super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces).enumerate()
+                {
+                    let ty = rect.y.saturating_add((name_rows + offset) as u16);
+                    if ty >= rect.bottom() {
+                        break;
+                    }
+                    let active = tab.tab_id == workspace.active_tab_id;
+                    let style = if active && endpoint_active && workspace.focused {
+                        Style::default()
+                            .fg(palette.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else if active {
+                        Style::default().fg(palette.overlay1)
+                    } else {
+                        Style::default().fg(palette.overlay0)
+                    };
+                    let prefix = if entry.indented { "        " } else { "    " };
+                    put_text(
+                        buffer,
+                        rect.x,
+                        ty,
+                        rect.width,
+                        &format!("{prefix}{}", tab.label),
+                        style,
+                    );
+                    if endpoint_active {
+                        hits.tabs
+                            .push((Rect::new(rect.x, ty, rect.width, 1), tab.tab_id.clone()));
+                    }
+                }
                 hits.workspaces.push(WorkspaceHit {
-                    rect,
+                    rect: name_rect,
                     endpoint_id: endpoint.endpoint_id.clone(),
                     workspace_id: workspace.workspace_id.clone(),
                     indented: entry.indented,
