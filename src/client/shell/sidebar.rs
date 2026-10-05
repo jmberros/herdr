@@ -259,7 +259,7 @@ pub(crate) fn render_sidebar(
                     )
                     .len()
                     .max(1)
-                    .saturating_add(sidebar_tabs(snapshot, workspace, &config.spaces).count())
+                    .saturating_add(sidebar_tab_rows(snapshot, workspace, &config.spaces))
                     .min(u16::MAX as usize) as u16
                 })
                 .unwrap_or(1)
@@ -315,7 +315,7 @@ pub(crate) fn render_sidebar(
         let status = displayed_workspace_status(snapshot, workspace, state.collapsed_groups);
         let rows = workspace_rows(workspace, status, entry.indented, &config.spaces);
         let name_rows = rows.len().max(1);
-        let tab_rows = sidebar_tabs(snapshot, workspace, &config.spaces).count();
+        let tab_rows = sidebar_tab_rows(snapshot, workspace, &config.spaces);
         let row_height =
             (name_rows.saturating_add(tab_rows).min(u16::MAX as usize) as u16).min(body.height);
         if y.saturating_add(row_height) > body.bottom() {
@@ -356,9 +356,10 @@ pub(crate) fn render_sidebar(
         );
         // Name rows only: tab rows below are hit-tested as tabs, not the workspace.
         let name_rect = Rect::new(rect.x, rect.y, rect.width, (name_rows as u16).min(rect.height));
-        for (offset, tab) in sidebar_tabs(snapshot, workspace, &config.spaces).enumerate() {
-            let ty = rect.y.saturating_add((name_rows + offset) as u16);
-            if ty >= rect.bottom() {
+        let mut ty = rect.y.saturating_add(name_rows as u16);
+        for tab in sidebar_tabs(snapshot, workspace, &config.spaces) {
+            let tab_height = tab_row_height(snapshot, tab) as u16;
+            if ty.saturating_add(tab_height) > rect.bottom() {
                 break;
             }
             let active = tab.tab_id == workspace.active_tab_id;
@@ -374,7 +375,7 @@ pub(crate) fn render_sidebar(
             let prefix = if entry.indented { "      " } else { "  " };
             render_tab_row(
                 buffer,
-                Rect::new(rect.x, ty, rect.width, 1),
+                Rect::new(rect.x, ty, rect.width, tab_height),
                 prefix,
                 tab,
                 snapshot,
@@ -383,7 +384,8 @@ pub(crate) fn render_sidebar(
                 palette,
             );
             hits.tabs
-                .push((Rect::new(rect.x, ty, rect.width, 1), tab.tab_id.clone()));
+                .push((Rect::new(rect.x, ty, rect.width, tab_height), tab.tab_id.clone()));
+            ty = ty.saturating_add(tab_height);
         }
         hits.workspaces.push(WorkspaceHit {
             rect: name_rect,
@@ -518,7 +520,7 @@ pub(in crate::client::shell) fn render_tab_row(
         status_icon(tab.agent_status, indicators),
         Style::default().fg(status_color(tab.agent_status, palette)),
     );
-    x = put_segment(
+    put_segment(
         buffer,
         x,
         area.y,
@@ -526,24 +528,75 @@ pub(in crate::client::shell) fn render_tab_row(
         &format!(" {}", tab.label),
         label_style,
     );
-    if let Some(agent) = tab_agent_text(snapshot, tab) {
-        x = put_segment(
-            buffer,
-            x,
-            area.y,
-            area.right(),
-            " · ",
-            Style::default().fg(palette.overlay0),
-        );
-        put_segment(
-            buffer,
-            x,
-            area.y,
-            area.right(),
-            &agent,
-            Style::default().fg(palette.blue),
-        );
+    if area.height > 1 {
+        if let Some(agent) = tab_agent_text(snapshot, tab) {
+            let indent = format!("{prefix}  ");
+            let x = put_segment(
+                buffer,
+                area.x,
+                area.y + 1,
+                area.right(),
+                &indent,
+                label_style,
+            );
+            put_segment(
+                buffer,
+                x,
+                area.y + 1,
+                area.right(),
+                &agent,
+                Style::default().fg(palette.blue),
+            );
+        }
     }
+    if area.height > 2 {
+        if let Some(title) = tab_agent_title(snapshot, tab) {
+            put_segment(
+                buffer,
+                area.x,
+                area.y + 2,
+                area.right(),
+                &format!("{prefix}  {title}"),
+                Style::default()
+                    .fg(palette.subtext0)
+                    .add_modifier(Modifier::ITALIC),
+            );
+        }
+    }
+}
+
+/// The agent's terminal title (for Claude Code, its session topic), as a goal hint.
+fn tab_agent_title<'a>(
+    snapshot: &'a ClientShellSnapshot,
+    tab: &crate::protocol::ClientShellTab,
+) -> Option<&'a str> {
+    let agent = snapshot
+        .agents
+        .iter()
+        .filter(|agent| agent.tab_id == tab.tab_id)
+        .max_by_key(|agent| agent.focused)?;
+    agent
+        .terminal_title_stripped
+        .as_deref()
+        .or(agent.terminal_title.as_deref())
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+}
+
+/// Rows one sidebar tab entry takes: its name, plus a line for its agent.
+pub(in crate::client::shell) fn tab_row_height(snapshot: &ClientShellSnapshot, tab: &crate::protocol::ClientShellTab) -> usize {
+    1 + usize::from(tab_agent_text(snapshot, tab).is_some())
+        + usize::from(tab_agent_title(snapshot, tab).is_some())
+}
+
+pub(in crate::client::shell) fn sidebar_tab_rows(
+    snapshot: &ClientShellSnapshot,
+    workspace: &crate::protocol::ClientShellWorkspace,
+    config: &SpacesSidebarConfig,
+) -> usize {
+    sidebar_tabs(snapshot, workspace, config)
+        .map(|tab| tab_row_height(snapshot, tab))
+        .sum()
 }
 
 /// "<agent> <model>" for the tab's agent (focused one first), e.g. "claude Sonnet 5.5".

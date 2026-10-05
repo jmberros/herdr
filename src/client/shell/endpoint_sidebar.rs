@@ -335,10 +335,11 @@ pub(super) fn render_expanded(
                             )
                             .len()
                             .max(1)
-                            .saturating_add(
-                                super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces)
-                                    .count(),
-                            )
+                            .saturating_add(super::sidebar::sidebar_tab_rows(
+                                snapshot,
+                                workspace,
+                                &config.spaces,
+                            ))
                             .min(u16::MAX as usize) as u16,
                         )
                     })
@@ -469,7 +470,7 @@ pub(super) fn render_expanded(
                 );
                 let name_rows = tokens.len().max(1);
                 let tab_rows =
-                    super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces).count();
+                    super::sidebar::sidebar_tab_rows(snapshot, workspace, &config.spaces);
                 let height = (name_rows.saturating_add(tab_rows).min(u16::MAX as usize) as u16)
                     .min(body.height);
                 if y.saturating_add(height) > body.bottom() {
@@ -521,11 +522,10 @@ pub(super) fn render_expanded(
                 if endpoint_active {
                     name_rect.height = (name_rows as u16).min(rect.height);
                 }
-                for (offset, tab) in
-                    super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces).enumerate()
-                {
-                    let ty = rect.y.saturating_add((name_rows + offset) as u16);
-                    if ty >= rect.bottom() {
+                let mut ty = rect.y.saturating_add(name_rows as u16);
+                for tab in super::sidebar::sidebar_tabs(snapshot, workspace, &config.spaces) {
+                    let tab_height = super::sidebar::tab_row_height(snapshot, tab) as u16;
+                    if ty.saturating_add(tab_height) > rect.bottom() {
                         break;
                     }
                     let active = tab.tab_id == workspace.active_tab_id;
@@ -541,7 +541,7 @@ pub(super) fn render_expanded(
                     let prefix = if entry.indented { "        " } else { "    " };
                     super::sidebar::render_tab_row(
                         buffer,
-                        Rect::new(rect.x, ty, rect.width, 1),
+                        Rect::new(rect.x, ty, rect.width, tab_height),
                         prefix,
                         tab,
                         snapshot,
@@ -550,9 +550,12 @@ pub(super) fn render_expanded(
                         palette,
                     );
                     if endpoint_active {
-                        hits.tabs
-                            .push((Rect::new(rect.x, ty, rect.width, 1), tab.tab_id.clone()));
+                        hits.tabs.push((
+                            Rect::new(rect.x, ty, rect.width, tab_height),
+                            tab.tab_id.clone(),
+                        ));
                     }
+                    ty = ty.saturating_add(tab_height);
                 }
                 hits.workspaces.push(WorkspaceHit {
                     rect: name_rect,
